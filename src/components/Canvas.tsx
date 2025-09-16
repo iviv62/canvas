@@ -2,14 +2,26 @@ import React, { useRef, useEffect, useState } from 'react';
 import MoveableObject from './MoveableObject';
 import './Canvas.css';
 
-const Canvas = () => {
-  const canvasRef = useRef(null);
-  const [objects, setObjects] = useState([]);
-  const [nextId, setNextId] = useState(1);
+export interface CanvasObject {
+  id: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+  type: 'rectangle' | 'circle' | 'triangle';
+}
+
+export type ObjectType = 'rectangle' | 'circle' | 'triangle';
+
+const Canvas: React.FC = () => {
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [objects, setObjects] = useState<CanvasObject[]>([]);
+  const [nextId, setNextId] = useState<number>(1);
 
   useEffect(() => {
     // Initialize with some default objects
-    const initialObjects = [
+    const initialObjects: CanvasObject[] = [
       {
         id: 1,
         x: 100,
@@ -42,7 +54,7 @@ const Canvas = () => {
     setNextId(4);
   }, []);
 
-  const handleObjectMove = (id, newX, newY) => {
+  const handleObjectMove = (id: number, newX: number, newY: number): void => {
     setObjects(prevObjects =>
       prevObjects.map(obj =>
         obj.id === id ? { ...obj, x: newX, y: newY } : obj
@@ -50,11 +62,11 @@ const Canvas = () => {
     );
   };
 
-  const addObject = (type) => {
+  const addObject = (type: ObjectType): void => {
     const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dda0dd'];
     const randomColor = colors[Math.floor(Math.random() * colors.length)];
     
-    const newObject = {
+    const newObject: CanvasObject = {
       id: nextId,
       x: Math.random() * 400 + 50,
       y: Math.random() * 300 + 50,
@@ -68,7 +80,7 @@ const Canvas = () => {
     setNextId(nextId + 1);
   };
 
-  const removeObject = (id) => {
+  const removeObject = (id: number): void => {
     setObjects(prevObjects => prevObjects.filter(obj => obj.id !== id));
   };
 
