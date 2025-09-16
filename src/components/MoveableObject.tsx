@@ -1,10 +1,85 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { ObjectType } from './Canvas';
 
-const MoveableObject = ({ id, x, y, width, height, color, type, onMove, onRemove }) => {
-  const objectRef = useRef(null);
-  const shadowRootRef = useRef(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+interface MoveableObjectProps {
+  id: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+  type: ObjectType;
+  onMove: (id: number, newX: number, newY: number) => void;
+  onRemove: (id: number) => void;
+}
+
+interface DragOffset {
+  x: number;
+  y: number;
+}
+
+const MoveableObject: React.FC<MoveableObjectProps> = ({ 
+  id, x, y, width, height, color, type, onMove, onRemove 
+}) => {
+  const objectRef = useRef<HTMLDivElement>(null);
+  const shadowRootRef = useRef<ShadowRoot | null>(null);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [dragOffset, setDragOffset] = useState<DragOffset>({ x: 0, y: 0 });
+  const dragStateRef = useRef<{ isDragging: boolean; offset: DragOffset }>({
+    isDragging: false,
+    offset: { x: 0, y: 0 }
+  });
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!dragStateRef.current.isDragging) return;
+    
+    e.preventDefault();
+    const newX = e.clientX - dragStateRef.current.offset.x;
+    const newY = e.clientY - dragStateRef.current.offset.y;
+    
+    // Constrain to canvas bounds
+    const maxX = 800 - width;
+    const maxY = 600 - height;
+    const constrainedX = Math.max(0, Math.min(newX, maxX));
+    const constrainedY = Math.max(0, Math.min(newY, maxY));
+    
+    if (shadowRootRef.current) {
+      const container = shadowRootRef.current.querySelector('div') as HTMLDivElement;
+      if (container) {
+        container.style.left = `${constrainedX}px`;
+        container.style.top = `${constrainedY}px`;
+      }
+    }
+  }, [width, height]);
+
+  const handleMouseUp = useCallback(() => {
+    if (dragStateRef.current.isDragging) {
+      setIsDragging(false);
+      dragStateRef.current.isDragging = false;
+      
+      if (shadowRootRef.current) {
+        const container = shadowRootRef.current.querySelector('div') as HTMLDivElement;
+        if (container) {
+          container.style.transform = 'scale(1)';
+          container.style.zIndex = 'auto';
+          
+          const finalX = parseInt(container.style.left, 10);
+          const finalY = parseInt(container.style.top, 10);
+          onMove(id, finalX, finalY);
+        }
+      }
+    }
+  }, [id, onMove]);
+
+  useEffect(() => {
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [handleMouseMove, handleMouseUp]);
 
   useEffect(() => {
     if (objectRef.current && !shadowRootRef.current) {
@@ -91,53 +166,22 @@ const MoveableObject = ({ id, x, y, width, height, color, type, onMove, onRemove
       shadowRootRef.current.appendChild(container);
 
       // Add event listeners
-      let startX, startY, initialX, initialY;
-
-      const handleMouseDown = (e) => {
+      const handleMouseDown = (e: MouseEvent) => {
         e.preventDefault();
         setIsDragging(true);
+        dragStateRef.current.isDragging = true;
         
-        startX = e.clientX;
-        startY = e.clientY;
-        initialX = parseInt(container.style.left, 10);
-        initialY = parseInt(container.style.top, 10);
+        // Calculate offset from mouse to top-left of container
+        const offset = {
+          x: e.clientX - parseInt(container.style.left, 10),
+          y: e.clientY - parseInt(container.style.top, 10)
+        };
         
-        setDragOffset({
-          x: e.clientX - initialX,
-          y: e.clientY - initialY
-        });
+        setDragOffset(offset);
+        dragStateRef.current.offset = offset;
 
         container.style.transform = 'scale(1.05)';
         container.style.zIndex = '1000';
-      };
-
-      const handleMouseMove = (e) => {
-        if (!isDragging) return;
-        
-        e.preventDefault();
-        const newX = e.clientX - dragOffset.x;
-        const newY = e.clientY - dragOffset.y;
-        
-        // Constrain to canvas bounds
-        const maxX = 800 - width;
-        const maxY = 600 - height;
-        const constrainedX = Math.max(0, Math.min(newX, maxX));
-        const constrainedY = Math.max(0, Math.min(newY, maxY));
-        
-        container.style.left = `${constrainedX}px`;
-        container.style.top = `${constrainedY}px`;
-      };
-
-      const handleMouseUp = () => {
-        if (isDragging) {
-          setIsDragging(false);
-          container.style.transform = 'scale(1)';
-          container.style.zIndex = 'auto';
-          
-          const finalX = parseInt(container.style.left, 10);
-          const finalY = parseInt(container.style.top, 10);
-          onMove(id, finalX, finalY);
-        }
       };
 
       const handleMouseEnter = () => {
@@ -146,21 +190,19 @@ const MoveableObject = ({ id, x, y, width, height, color, type, onMove, onRemove
       };
 
       const handleMouseLeave = () => {
-        if (!isDragging) {
+        if (!dragStateRef.current.isDragging) {
           removeButton.style.display = 'none';
           container.style.transform = 'scale(1)';
         }
       };
 
-      const handleRemoveClick = (e) => {
+      const handleRemoveClick = (e: MouseEvent) => {
         e.stopPropagation();
         onRemove(id);
       };
 
       // Attach event listeners
       container.addEventListener('mousedown', handleMouseDown);
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
       container.addEventListener('mouseenter', handleMouseEnter);
       container.addEventListener('mouseleave', handleMouseLeave);
       removeButton.addEventListener('click', handleRemoveClick);
@@ -168,20 +210,18 @@ const MoveableObject = ({ id, x, y, width, height, color, type, onMove, onRemove
       // Cleanup function
       return () => {
         container.removeEventListener('mousedown', handleMouseDown);
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
         container.removeEventListener('mouseenter', handleMouseEnter);
         container.removeEventListener('mouseleave', handleMouseLeave);
         removeButton.removeEventListener('click', handleRemoveClick);
       };
     }
-  }, []);
+  }, [id, x, y, width, height, color, type, onRemove]);
 
   // Update position when props change
   useEffect(() => {
     if (shadowRootRef.current) {
-      const container = shadowRootRef.current.querySelector('div');
-      if (container) {
+      const container = shadowRootRef.current.querySelector('div') as HTMLDivElement;
+      if (container && !dragStateRef.current.isDragging) {
         container.style.left = `${x}px`;
         container.style.top = `${y}px`;
       }
