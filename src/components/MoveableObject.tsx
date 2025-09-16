@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { ObjectType } from './Canvas';
 
 interface MoveableObjectProps {
@@ -29,57 +29,8 @@ const MoveableObject: React.FC<MoveableObjectProps> = ({
     isDragging: false,
     offset: { x: 0, y: 0 }
   });
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!dragStateRef.current.isDragging) return;
-    
-    e.preventDefault();
-    const newX = e.clientX - dragStateRef.current.offset.x;
-    const newY = e.clientY - dragStateRef.current.offset.y;
-    
-    // Constrain to canvas bounds
-    const maxX = 800 - width;
-    const maxY = 600 - height;
-    const constrainedX = Math.max(0, Math.min(newX, maxX));
-    const constrainedY = Math.max(0, Math.min(newY, maxY));
-    
-    if (shadowRootRef.current) {
-      const container = shadowRootRef.current.querySelector('div') as HTMLDivElement;
-      if (container) {
-        container.style.left = `${constrainedX}px`;
-        container.style.top = `${constrainedY}px`;
-      }
-    }
-  }, [width, height]);
-
-  const handleMouseUp = useCallback(() => {
-    if (dragStateRef.current.isDragging) {
-      setIsDragging(false);
-      dragStateRef.current.isDragging = false;
-      
-      if (shadowRootRef.current) {
-        const container = shadowRootRef.current.querySelector('div') as HTMLDivElement;
-        if (container) {
-          container.style.transform = 'scale(1)';
-          container.style.zIndex = 'auto';
-          
-          const finalX = parseInt(container.style.left, 10);
-          const finalY = parseInt(container.style.top, 10);
-          onMove(id, finalX, finalY);
-        }
-      }
-    }
-  }, [id, onMove]);
-
-  useEffect(() => {
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [handleMouseMove, handleMouseUp]);
+  const containerElRef = useRef<HTMLDivElement | null>(null);
+  
 
   useEffect(() => {
     if (objectRef.current && !shadowRootRef.current) {
@@ -165,7 +116,38 @@ const MoveableObject: React.FC<MoveableObjectProps> = ({
       container.appendChild(removeButton);
       shadowRootRef.current.appendChild(container);
 
+      // Keep a reference to the container element
+      containerElRef.current = container;
+
       // Add event listeners
+      const handleMouseMove = (e: MouseEvent) => {
+        if (!dragStateRef.current.isDragging || !containerElRef.current) return;
+        e.preventDefault();
+        const newX = e.clientX - dragStateRef.current.offset.x;
+        const newY = e.clientY - dragStateRef.current.offset.y;
+        // Constrain to canvas bounds
+        const maxX = 800 - width;
+        const maxY = 600 - height;
+        const constrainedX = Math.max(0, Math.min(newX, maxX));
+        const constrainedY = Math.max(0, Math.min(newY, maxY));
+        containerElRef.current.style.left = `${constrainedX}px`;
+        containerElRef.current.style.top = `${constrainedY}px`;
+      };
+
+      const handleMouseUp = () => {
+        if (!dragStateRef.current.isDragging || !containerElRef.current) return;
+        setIsDragging(false);
+        dragStateRef.current.isDragging = false;
+        containerElRef.current.style.transform = 'scale(1)';
+        containerElRef.current.style.zIndex = 'auto';
+        // Remove per-drag listeners
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        const finalX = parseInt(containerElRef.current.style.left, 10);
+        const finalY = parseInt(containerElRef.current.style.top, 10);
+        onMove(id, finalX, finalY);
+      };
+
       const handleMouseDown = (e: MouseEvent) => {
         e.preventDefault();
         setIsDragging(true);
@@ -182,6 +164,9 @@ const MoveableObject: React.FC<MoveableObjectProps> = ({
 
         container.style.transform = 'scale(1.05)';
         container.style.zIndex = '1000';
+        // Add per-drag listeners
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
       };
 
       const handleMouseEnter = () => {
@@ -213,18 +198,18 @@ const MoveableObject: React.FC<MoveableObjectProps> = ({
         container.removeEventListener('mouseenter', handleMouseEnter);
         container.removeEventListener('mouseleave', handleMouseLeave);
         removeButton.removeEventListener('click', handleRemoveClick);
+        // Safety: remove any dangling per-drag listeners
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [id, x, y, width, height, color, type, onRemove]);
+  }, []);
 
   // Update position when props change
   useEffect(() => {
-    if (shadowRootRef.current) {
-      const container = shadowRootRef.current.querySelector('div') as HTMLDivElement;
-      if (container && !dragStateRef.current.isDragging) {
-        container.style.left = `${x}px`;
-        container.style.top = `${y}px`;
-      }
+    if (containerElRef.current && !dragStateRef.current.isDragging) {
+      containerElRef.current.style.left = `${x}px`;
+      containerElRef.current.style.top = `${y}px`;
     }
   }, [x, y]);
 
